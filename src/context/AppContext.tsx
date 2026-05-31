@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { MOCK_USERS, type MockUser, type Role } from "@/lib/mock-data";
+import { supabase } from "@/lib/supabase";
 
 interface RegisterPayload {
   fullName: string;
@@ -51,19 +52,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, _password: string) => {
     try {
-      console.warn("Database persistence pending Supabase connection");
-      // const { data, error } = await supabase.auth.signInWithPassword({
-      //   email: username,
-      //   password: _password,
-      // });
-      // if (error) throw error;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: username,
+        password: _password,
+      });
+      if (error) throw error;
 
-      // MOCK ONLY — temporary keyword-based role inference for dev preview.
-      // Real auth (post-Cloud) will read the user's assigned role from the database.
-      const u = username.toLowerCase();
-      if (u.includes("admin")) setRole("admin");
-      else if (u.includes("tailor") || u.includes("khalil")) setRole("tailor");
-      else setRole("customer");
+      if (data.user) {
+        // Fetch the user's role from the custom profiles table
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", data.user.id)
+          .single();
+        
+        if (profile && profile.role) {
+          setRole(profile.role as Role);
+        } else {
+          // Fallback for mock users or if profile doesn't exist yet
+          const u = username.toLowerCase();
+          if (u.includes("admin")) setRole("admin");
+          else if (u.includes("tailor") || u.includes("khalil")) setRole("tailor");
+          else setRole("customer");
+        }
+      }
       persistAuth(true);
     } catch (e) {
       console.error("Login failed:", e);
@@ -73,21 +85,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const register = async (payload: RegisterPayload) => {
     try {
-      console.warn("Database persistence pending Supabase connection");
-      // const { data, error } = await supabase.auth.signUp({
-      //   email: payload.email,
-      //   password: payload.password,
-      //   options: {
-      //     data: {
-      //       full_name: payload.fullName,
-      //       username: payload.username,
-      //     }
-      //   }
-      // });
-      // if (error) throw error;
+      const { data, error } = await supabase.auth.signUp({
+        email: payload.email,
+        password: payload.password,
+      });
+      if (error) throw error;
 
-      // Public registration is customer-only. Tailors are provisioned by an
-      // admin from the dashboard; admins are seeded in the database directly.
+      if (data.user) {
+        // Create the profile row with customer role and location data
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .insert({
+            id: data.user.id,
+            role: "customer",
+            full_name: payload.fullName,
+            username: payload.username,
+            location_lat: payload.location.lat,
+            location_lng: payload.location.lng,
+            location_address: payload.location.address,
+          });
+        
+        if (profileError) {
+          console.error("Failed to create profile:", profileError);
+        }
+      }
+
       setRole("customer");
       persistAuth(true);
     } catch (e) {
