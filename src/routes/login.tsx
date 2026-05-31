@@ -14,17 +14,19 @@ export const Route = createFileRoute("/login")({
 });
 
 const schema = z.object({
-  username: z.string().trim().min(3, "At least 3 characters").max(32),
+  email: z.string().trim().email("Invalid email").max(255),
   password: z.string().min(6, "At least 6 characters"),
 });
 
 function LoginPage() {
   const { login } = useApp();
   const navigate = useNavigate();
-  const [values, setValues] = useState({ username: "", password: "" });
+  const [values, setValues] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = schema.safeParse(values);
     if (!parsed.success) {
@@ -33,8 +35,16 @@ function LoginPage() {
       setErrors(errs);
       return;
     }
-    login(parsed.data.username, parsed.data.password);
-    navigate({ to: "/" });
+    setLoginError(null);
+    setLoading(true);
+    try {
+      await login(parsed.data.email, parsed.data.password);
+      navigate({ to: "/" });
+    } catch (err: any) {
+      setLoginError(err?.message ?? "Invalid email or password.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -81,15 +91,16 @@ function LoginPage() {
           </div>
           <form className="mt-8 space-y-5" onSubmit={onSubmit} noValidate>
             <div className="space-y-1.5">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="username"
-                value={values.username}
-                onChange={(e) => setValues((v) => ({ ...v, username: e.target.value }))}
-                placeholder="your_handle"
-                autoComplete="username"
+                id="email"
+                type="email"
+                value={values.email}
+                onChange={(e) => setValues((v) => ({ ...v, email: e.target.value }))}
+                placeholder="you@atelier.com"
+                autoComplete="email"
               />
-              {errors.username && <p className="text-xs text-destructive">{errors.username}</p>}
+              {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>
@@ -103,8 +114,13 @@ function LoginPage() {
               />
               {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
             </div>
-            <Button type="submit" className="w-full bg-primary text-primary-foreground" size="lg">
-              Login
+            {loginError && (
+              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {loginError}
+              </p>
+            )}
+            <Button type="submit" className="w-full bg-primary text-primary-foreground" size="lg" disabled={loading}>
+              {loading ? "Signing in…" : "Login"}
             </Button>
           </form>
           <p className="mt-6 text-center text-sm text-muted-foreground">
@@ -114,7 +130,7 @@ function LoginPage() {
             </Link>
           </p>
           <p className="mt-3 text-center text-xs text-muted-foreground">
-            Tip: use a username containing <code>admin</code> or <code>tailor</code> to preview that role.
+            Tip: use your registered email address to sign in.
           </p>
         </div>
       </main>

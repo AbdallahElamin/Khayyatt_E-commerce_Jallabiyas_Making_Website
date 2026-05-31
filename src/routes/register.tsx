@@ -63,12 +63,14 @@ function RegisterPage() {
     location: null,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setValues((s) => ({ ...s, [k]: v }));
   };
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = schema.safeParse(values);
     if (!parsed.success) {
@@ -77,14 +79,22 @@ function RegisterPage() {
       setErrors(errs);
       return;
     }
-    register({
-      fullName: parsed.data.fullName,
-      email: parsed.data.email,
-      username: parsed.data.username,
-      password: parsed.data.password,
-      location: parsed.data.location!,
-    });
-    navigate({ to: "/" });
+    setSubmitError(null);
+    setLoading(true);
+    try {
+      await register({
+        fullName: parsed.data.fullName,
+        email: parsed.data.email,
+        username: parsed.data.username,
+        password: parsed.data.password,
+        location: parsed.data.location!,
+      });
+      navigate({ to: "/" });
+    } catch (err: any) {
+      setSubmitError(err?.message ?? "Registration failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -194,8 +204,14 @@ function RegisterPage() {
               />
             </Field>
 
-            <Button type="submit" size="lg" className="w-full bg-primary text-primary-foreground">
-              Create account
+            {submitError && (
+              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {submitError}
+              </p>
+            )}
+
+            <Button type="submit" size="lg" className="w-full bg-primary text-primary-foreground" disabled={loading}>
+              {loading ? "Creating account…" : "Create account"}
             </Button>
           </form>
 
