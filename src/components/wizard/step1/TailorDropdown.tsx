@@ -8,7 +8,7 @@ import { useWizard } from "../WizardContext";
 export function TailorDropdown() {
   const { user } = useApp();
   const { tailorId, setTailorId } = useWizard();
-  const userCity = user.location?.address?.split(",")[0]?.trim();
+  const userCity = user.location_address?.split(",")[0]?.trim();
 
   const inCity = TAILOR_PROFILES.filter((t) => t.city === userCity);
   const list = inCity.length > 0 ? inCity : TAILOR_PROFILES;

@@ -33,9 +33,10 @@ export function MockMap() {
   const markerRefs = useRef<Map<string, any>>(new Map());
   const [leafletReady, setLeafletReady] = useState(false);
 
-  const userPos: [number, number] = user.location
-    ? [user.location.lat, user.location.lng]
-    : DEFAULT_USER;
+  const userPos: [number, number] =
+    user.location_lat != null && user.location_lng != null
+      ? [user.location_lat, user.location_lng]
+      : DEFAULT_USER;
 
   // Compute real distances from user to each tailor
   const tailorsWithDistance = useMemo(

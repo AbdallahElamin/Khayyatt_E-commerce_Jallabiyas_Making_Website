@@ -4,24 +4,47 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { supabase } from "@/lib/supabase";
+import { useApp } from "@/context/AppContext";
 
 interface Props {
   onUnlock: () => void;
 }
 
 export function PasswordGate({ onUnlock }: Props) {
+  const { user } = useApp();
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    // MOCK ONLY: any password ≥ 4 chars unlocks. Real verification lands once Cloud is enabled.
-    if (pw.trim().length < 4) {
-      setErr("Password must be at least 4 characters.");
+    if (!pw.trim()) {
+      setErr("Please enter your password.");
+      return;
+    }
+    if (!user.email) {
+      setErr("No email found for this account.");
       return;
     }
     setErr(null);
-    onUnlock();
+    setLoading(true);
+    try {
+      // Verify password by attempting a real Supabase sign-in
+      const { error } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: pw,
+      });
+      if (error) {
+        setErr("Incorrect password. Please try again.");
+      } else {
+        onUnlock();
+      }
+    } catch {
+      setErr("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -50,12 +73,15 @@ export function PasswordGate({ onUnlock }: Props) {
               />
               {err && <p className="text-xs text-destructive">{err}</p>}
             </div>
-            <Button type="submit" size="lg" className="w-full bg-primary text-primary-foreground">
-              <ShieldCheck className="mr-2 h-4 w-4" /> Unlock profile
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full bg-primary text-primary-foreground"
+              disabled={loading}
+            >
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              {loading ? "Verifying…" : "Unlock profile"}
             </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Demo mode — any password of 4+ characters works. Real verification lands once Cloud is connected.
-            </p>
           </form>
         </CardContent>
       </Card>

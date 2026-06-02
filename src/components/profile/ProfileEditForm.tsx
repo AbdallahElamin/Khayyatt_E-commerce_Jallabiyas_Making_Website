@@ -7,20 +7,33 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LocationPicker, type LocationValue } from "@/components/auth/LocationPicker";
 import { useApp } from "@/context/AppContext";
+import { supabase } from "@/lib/supabase";
 
 interface Props {
   onLock: () => void;
 }
 
 export function ProfileEditForm({ onLock }: Props) {
-  const { user, role } = useApp();
+  const { user, role, refreshProfile } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
-  const [firstName, setFirstName] = useState(user.firstName ?? "");
-  const [lastName, setLastName] = useState(user.lastName ?? "");
+
+  // Initialise from real Supabase profile data
+  const nameParts = (user.full_name ?? "").trim().split(/\s+/);
+  const [firstName, setFirstName] = useState(nameParts[0] ?? "");
+  const [lastName, setLastName] = useState(nameParts.slice(1).join(" ") ?? "");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [location, setLocation] = useState<LocationValue | null>(user.location ?? null);
+  const [location, setLocation] = useState<LocationValue | null>(
+    user.location_lat && user.location_lng && user.location_address
+      ? {
+          lat: user.location_lat,
+          lng: user.location_lng,
+          address: user.location_address,
+        }
+      : null,
+  );
+  const [saving, setSaving] = useState(false);
 
   const canEditPassword = role === "customer";
   const canEditLocation = role === "customer";
@@ -31,8 +44,9 @@ export function ProfileEditForm({ onLock }: Props) {
     if (f) setAvatar(URL.createObjectURL(f));
   };
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
+
     if (canEditPassword && password && password !== confirm) {
       toast.error("Passwords do not match.");
       return;
@@ -41,7 +55,47 @@ export function ProfileEditForm({ onLock }: Props) {
       toast.error("Password must be at least 8 characters.");
       return;
     }
-    toast.success("Saved locally — will persist once Cloud is connected.");
+
+    setSaving(true);
+    try {
+      const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+
+      // Update profile row in Supabase
+      const profileUpdate: Record<string, any> = {
+        full_name: fullName,
+      };
+      if (canEditLocation && location) {
+        profileUpdate.location_lat = location.lat;
+        profileUpdate.location_lng = location.lng;
+        profileUpdate.location_address = location.address;
+      }
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update(profileUpdate)
+        .eq("id", user.id);
+
+      if (profileError) throw profileError;
+
+      // Update password separately if provided
+      if (canEditPassword && password) {
+        const { error: pwError } = await supabase.auth.updateUser({
+          password,
+        });
+        if (pwError) throw pwError;
+      }
+
+      // Refresh context so Navbar/ProfileMenu updates immediately
+      await refreshProfile();
+
+      toast.success("Profile updated successfully!");
+      setPassword("");
+      setConfirm("");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -74,14 +128,14 @@ export function ProfileEditForm({ onLock }: Props) {
         </FieldLabel>
       </div>
 
-      {/* Locked: email + username, always */}
+      {/* Locked: email + username */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <LockedField label="Email" value={user.email} />
+        <LockedField label="Email" value={user.email ?? ""} />
         <LockedField label="Username" value={user.username ?? ""} />
       </div>
 
       {role === "tailor" && (
-        <LockedField label="Market name" value={user.marketName ?? ""} />
+        <LockedField label="Atelier name" value={user.atelier_name ?? ""} />
       )}
 
       {/* Password */}
@@ -107,7 +161,11 @@ export function ProfileEditForm({ onLock }: Props) {
           </FieldLabel>
         </div>
       ) : (
-        <LockedField label="Password" value="••••••••" hint="Contact an administrator to reset your password." />
+        <LockedField
+          label="Password"
+          value="••••••••"
+          hint="Contact an administrator to reset your password."
+        />
       )}
 
       {/* Location */}
@@ -118,14 +176,20 @@ export function ProfileEditForm({ onLock }: Props) {
       ) : (
         <LockedField
           label="Location"
-          value={user.location?.address ?? "—"}
+          value={user.location_address ?? "—"}
           hint="Tailor locations are managed by the Khayyat team."
         />
       )}
 
       <div className="flex flex-wrap items-center gap-3 pt-2">
-        <Button type="submit" size="lg" className="bg-primary text-primary-foreground">
-          <Save className="mr-2 h-4 w-4" /> Save changes
+        <Button
+          type="submit"
+          size="lg"
+          className="bg-primary text-primary-foreground"
+          disabled={saving}
+        >
+          <Save className="mr-2 h-4 w-4" />
+          {saving ? "Saving…" : "Save changes"}
         </Button>
         <Button type="button" variant="ghost" onClick={onLock} className="text-muted-foreground">
           <LockIcon className="mr-2 h-4 w-4" /> Lock again
