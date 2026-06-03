@@ -3,10 +3,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Camera, Loader2, CheckCircle2 } from "lucide-react";
+import { Camera, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
-  MEASUREMENT_KEYS, useWizard, type Measurements, type MeasurementKey,
+  MEASUREMENT_KEYS, useWizard, type MeasurementKey,
 } from "../WizardContext";
 
 function mockPayloadForHeight(heightCm: number): Record<MeasurementKey, number> {
@@ -22,30 +22,50 @@ function mockPayloadForHeight(heightCm: number): Record<MeasurementKey, number> 
 
 type Upload = { name: string; gradient: string; file: File } | null;
 const GRAD_FRONT = "linear-gradient(135deg, oklch(0.55 0.13 30), oklch(0.30 0.10 30))";
-const GRAD_SIDE = "linear-gradient(135deg, oklch(0.55 0.12 200), oklch(0.30 0.10 220))";
+const GRAD_SIDE  = "linear-gradient(135deg, oklch(0.55 0.12 200), oklch(0.30 0.10 220))";
 
 /** Base URL of the local Python measurement service. Falls back to localhost:8000. */
 const PYTHON_API_URL =
   (import.meta.env.VITE_PYTHON_API_URL as string | undefined) ?? "http://localhost:8000";
 
-export function AiMeasurementPanel() {
-  const { setAllMeasurements, measurements } = useWizard();
-  const [front, setFront] = useState<Upload>(null);
-  const [side, setSide] = useState<Upload>(null);
-  const [height, setHeight] = useState<number | "">("");
-  const [busy, setBusy] = useState(false);
+type Status = "idle" | "busy" | "done" | "error";
 
+export function AiMeasurementPanel() {
+  const { setMeasurement } = useWizard();
+  const [front, setFront]   = useState<Upload>(null);
+  const [side, setSide]     = useState<Upload>(null);
+  const [height, setHeight] = useState<number | "">("");
+  const [status, setStatus] = useState<Status>("idle");
+  const [filledCount, setFilledCount] = useState(0);
+
+  const busy      = status === "busy";
   const canAnalyze = !!front && !!side && typeof height === "number" && height > 100 && !busy;
 
   const analyze = async () => {
     if (!front || !side || typeof height !== "number") return;
-    setBusy(true);
+    setStatus("busy");
+    setFilledCount(0);
 
     try {
+      // ── Step 0: Quick health-check so we fail fast with a clear message ──
+      try {
+        const health = await fetch(`${PYTHON_API_URL}/health`, { signal: AbortSignal.timeout(4000) });
+        if (!health.ok) throw new Error("health check failed");
+        console.info("[AiMeasurementPanel] Python server health OK");
+      } catch {
+        throw new Error(
+          `Cannot reach the Python measurement service at ${PYTHON_API_URL}. ` +
+          "Make sure you ran: bun run dev:ai"
+        );
+      }
+
+      // ── Step 1: Upload images ─────────────────────────────────────────────
       const form = new FormData();
       form.append("front_photo", front.file);
-      form.append("side_photo", side.file);
-      form.append("height_cm", String(height));
+      form.append("side_photo",  side.file);
+      form.append("height_cm",   String(height));
+
+      console.info("[AiMeasurementPanel] Sending images to", PYTHON_API_URL + "/measure");
 
       const response = await fetch(`${PYTHON_API_URL}/measure`, {
         method: "POST",
@@ -53,37 +73,64 @@ export function AiMeasurementPanel() {
       });
 
       if (!response.ok) {
-        throw new Error(`Server responded with status ${response.status}`);
+        const detail = await response.text();
+        throw new Error(`Server error ${response.status}: ${detail}`);
       }
 
-      const data = (await response.json()) as Partial<Record<MeasurementKey, number | null>>;
+      // ── Step 2: Parse JSON response ───────────────────────────────────────
+      const data = (await response.json()) as Record<string, unknown>;
+      console.info("[AiMeasurementPanel] Raw API response:", data);
 
-      // Merge API results into the measurements state; skip null/undefined values
-      // so the user can fill those in manually.
-      const filled: Measurements = { ...measurements };
+      // ── Step 3: Write each measurement individually into context ──────────
+      // Using individual setMeasurement() calls (not a single setAllMeasurements)
+      // avoids stale-closure issues where an old snapshot of `measurements` could
+      // overwrite values that were already manually edited by the user.
+      let count = 0;
       for (const k of MEASUREMENT_KEYS) {
-        const value = data[k];
-        if (typeof value === "number" && value > 0) {
-          filled[k] = Math.round(value * 10) / 10;
+        const raw = data[k];
+        const value = typeof raw === "number" ? raw : Number(raw);
+        console.debug(`[AiMeasurementPanel] key=${k} raw=${JSON.stringify(raw)} parsed=${value}`);
+        if (Number.isFinite(value) && value > 0) {
+          setMeasurement(k, Math.round(value * 10) / 10);
+          count++;
         }
       }
-      setAllMeasurements(filled);
-      toast.success("Measurements auto-filled from photo analysis.");
+
+      console.info(`[AiMeasurementPanel] Filled ${count} / ${MEASUREMENT_KEYS.length} fields`);
+      setFilledCount(count);
+
+      if (count === 0) {
+        // Server responded but no usable numbers came back — use height-based estimate
+        const fallback = mockPayloadForHeight(height);
+        for (const k of MEASUREMENT_KEYS) setMeasurement(k, fallback[k]);
+        setFilledCount(MEASUREMENT_KEYS.length);
+        toast.warning(
+          "AI returned no values — measurements estimated from your height. Please review.",
+          { duration: 8000 },
+        );
+      } else {
+        setStatus("done");
+        toast.success(
+          `${count} measurement${count !== 1 ? "s" : ""} filled from your photos. ` +
+          "Scroll down to review them.",
+          { duration: 8000 },
+        );
+      }
     } catch (err) {
-      console.error("[AiMeasurementPanel] Python API unreachable:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[AiMeasurementPanel] Error:", err);
+      setStatus("error");
 
       // Graceful fallback: use proportional estimate and tell the user.
       const fallback = mockPayloadForHeight(height as number);
-      const filled: Measurements = { ...measurements };
-      for (const k of MEASUREMENT_KEYS) filled[k] = fallback[k];
-      setAllMeasurements(filled);
+      for (const k of MEASUREMENT_KEYS) setMeasurement(k, fallback[k]);
+      setFilledCount(MEASUREMENT_KEYS.length);
 
       toast.warning(
-        "Could not reach the Python measurement service — estimated measurements have been pre-filled based on your height. Please review and adjust them manually.",
-        { duration: 6000 },
+        `Could not use AI measurements: ${msg}. ` +
+        "Estimated measurements have been pre-filled from your height — please review manually.",
+        { duration: 10000 },
       );
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -106,18 +153,14 @@ export function AiMeasurementPanel() {
           label="Front-facing photo"
           upload={front}
           gradient={GRAD_FRONT}
-          onPick={(file) =>
-            setFront({ name: file.name, gradient: GRAD_FRONT, file })
-          }
+          onPick={(file) => setFront({ name: file.name, gradient: GRAD_FRONT, file })}
         />
         <UploadTile
           id="upload-side"
           label="Side-facing photo"
           upload={side}
           gradient={GRAD_SIDE}
-          onPick={(file) =>
-            setSide({ name: file.name, gradient: GRAD_SIDE, file })
-          }
+          onPick={(file) => setSide({ name: file.name, gradient: GRAD_SIDE, file })}
         />
       </div>
 
@@ -155,12 +198,33 @@ export function AiMeasurementPanel() {
         </Button>
       </div>
 
+      {/* Success / error status banners */}
+      {status === "done" && (
+        <div className="mt-4 flex items-center gap-2 rounded-lg bg-green-500/10 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>
+            <strong>{filledCount} measurements</strong> filled from your photos — scroll down to
+            review and adjust.
+          </span>
+        </div>
+      )}
+      {status === "error" && (
+        <div className="mt-4 flex items-center gap-2 rounded-lg bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-500">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>
+            AI could not process the photos. Measurements have been estimated from your height —
+            please review them manually.
+          </span>
+        </div>
+      )}
+
       {/* Service status hint */}
       <p className="mt-3 text-[11px] text-muted-foreground">
         Requires the local Python service to be running at{" "}
         <code className="rounded bg-muted px-1 py-0.5 font-mono">{PYTHON_API_URL}</code>.
-        See <code className="rounded bg-muted px-1 py-0.5 font-mono">api/python-engine/README.md</code>{" "}
-        for setup instructions.
+        Start it with{" "}
+        <code className="rounded bg-muted px-1 py-0.5 font-mono">bun run dev:ai</code> in a
+        second terminal.
       </p>
     </Card>
   );
