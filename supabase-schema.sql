@@ -3,7 +3,7 @@ CREATE TYPE public.user_role AS ENUM ('customer', 'tailor', 'admin');
 
 -- Create the profiles table
 CREATE TABLE public.profiles (
-  id UUID REFERENCES auth.users(id) PRIMARY KEY, -- Links directly to the Auth user
+  id UUID PRIMARY KEY, -- Links directly to the Auth user (FK removed for prototyping tailor insertion)
   role public.user_role NOT NULL DEFAULT 'customer',
   
   -- Shared fields

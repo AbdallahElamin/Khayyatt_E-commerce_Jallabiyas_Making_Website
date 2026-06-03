@@ -1,12 +1,13 @@
 import { useEffect, useRef, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
-import { TAILOR_PROFILES } from "@/lib/mock-data";
+import { TAILOR_PROFILES, type TailorProfile } from "@/lib/mock-data";
 import { useApp } from "@/context/AppContext";
 import { useWizard } from "../WizardContext";
 import { loadLeaflet } from "@/lib/leaflet-loader";
+import { supabase } from "@/lib/supabase";
 
-// â”€â”€ Haversine distance (km) between two WGS84 points â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Haversine distance (km) between two WGS84 points ────────────────────────
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -19,7 +20,7 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Default user position â€” Marrakech, used when no location is saved
+// Default user position — Marrakech, used when no location is saved
 const DEFAULT_USER: [number, number] = [31.6295, -7.9811];
 
 export function MockMap() {
@@ -32,6 +33,47 @@ export function MockMap() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markerRefs = useRef<Map<string, any>>(new Map());
   const [leafletReady, setLeafletReady] = useState(false);
+  const [tailorProfiles, setTailorProfiles] = useState<TailorProfile[]>(TAILOR_PROFILES);
+
+  useEffect(() => {
+    async function loadTailors() {
+      const { data } = await supabase.from("profiles").select("*").eq("role", "tailor");
+      if (data && data.length > 0) {
+        const mapped: TailorProfile[] = data.map((d: any) => {
+          const fullName = d.full_name || "Unknown Tailor";
+          const parts = fullName.trim().split(/\s+/);
+          const initials = parts.length >= 2 
+            ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() 
+            : fullName.slice(0, 2).toUpperCase() || "?";
+          
+          return {
+            id: d.id,
+            atelier: d.atelier_name || "Unknown Atelier",
+            tailorName: fullName,
+            firstName: parts[0] || "",
+            lastName: parts.slice(1).join(" ") || "",
+            initials,
+            city: d.location_address ? d.location_address.split(",")[0].trim() : "",
+            country: "",
+            specialty: "Custom Tailoring", // Default fallback
+            rating: 5.0,
+            reviewCount: 0,
+            years: 0,
+            experienceStartDate: d.experience_start_date || new Date().toISOString().split("T")[0],
+            username: d.username || "",
+            password: "",
+            bio: "",
+            avatarGradient: "linear-gradient(135deg, oklch(0.30 0.08 160), oklch(0.55 0.13 160))", // Fallback G.emerald
+            coverGradient: "linear-gradient(135deg, oklch(0.78 0.15 70), oklch(0.45 0.13 30))",
+            lat: d.location_lat || 0,
+            lng: d.location_lng || 0,
+          };
+        });
+        setTailorProfiles(mapped);
+      }
+    }
+    loadTailors();
+  }, []);
 
   const userPos: [number, number] =
     user.location_lat != null && user.location_lng != null
@@ -41,14 +83,14 @@ export function MockMap() {
   // Compute real distances from user to each tailor
   const tailorsWithDistance = useMemo(
     () =>
-      TAILOR_PROFILES.map((t) => ({
+      tailorProfiles.map((t) => ({
         ...t,
         distanceKm: haversine(userPos[0], userPos[1], t.lat, t.lng),
       })),
-    [userPos[0], userPos[1]], // eslint-disable-line react-hooks/exhaustive-deps
+    [userPos[0], userPos[1], tailorProfiles], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // Auto-expand visual radius until â‰¥3 tailors fit (same behaviour as before)
+  // Auto-expand visual radius until ≥3 tailors fit (same behaviour as before)
   const [autoRadius, setAutoRadius] = useState(radiusKm);
   useEffect(() => {
     let r = radiusKm;
@@ -58,7 +100,7 @@ export function MockMap() {
 
   const visibleTailors = tailorsWithDistance.filter((t) => t.distanceKm <= autoRadius);
 
-  // â”€â”€ Mount the Leaflet map once â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Mount the Leaflet map once ──────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 

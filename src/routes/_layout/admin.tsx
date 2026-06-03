@@ -11,6 +11,8 @@ import { TailorsTable } from "@/components/admin/TailorsTable";
 import { AddTailorDialog } from "@/components/admin/AddTailorDialog";
 import { EditTailorDialog } from "@/components/admin/EditTailorDialog";
 import { BanTailorDialog } from "@/components/admin/BanTailorDialog";
+import { supabase } from "@/lib/supabase";
+import { useEffect } from "react";
 
 export const Route = createFileRoute("/_layout/admin")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Khayyat" }] }),
@@ -19,9 +21,33 @@ export const Route = createFileRoute("/_layout/admin")({
 
 function AdminPage() {
   const { role } = useApp();
-  const [tailors, setTailors] = useState<ManagedTailor[]>(MANAGED_TAILORS_SEED);
+  const [tailors, setTailors] = useState<ManagedTailor[]>([]);
   const [editing, setEditing] = useState<ManagedTailor | null>(null);
   const [banning, setBanning] = useState<ManagedTailor | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.from("profiles").select("*").eq("role", "tailor");
+      if (data) {
+        const mapped = data.map(d => ({
+          id: d.id,
+          fullName: d.full_name || "",
+          atelier: d.atelier_name || "",
+          email: "n/a", // Email is in auth.users, not profiles
+          username: d.username || "",
+          password: "",
+          experienceStartDate: d.experience_start_date || "",
+          city: d.location_address ? d.location_address.split(",")[0].trim() : "",
+          location: d.location_lat ? { lat: d.location_lat, lng: d.location_lng, address: d.location_address || "" } : null,
+          bannedUntil: null,
+        }));
+        setTailors(mapped);
+      }
+    }
+    if (role === "admin") {
+      load();
+    }
+  }, [role]);
 
   const stats = useMemo(() => {
     const active = tailors.filter((t) => !isBanned(t.bannedUntil)).length;
@@ -51,8 +77,25 @@ function AdminPage() {
     );
   }
 
-  const addTailor = (t: Omit<ManagedTailor, "id" | "bannedUntil">) => {
-    setTailors((list) => [...list, { id: crypto.randomUUID(), ...t, bannedUntil: null }]);
+  const addTailor = async (t: Omit<ManagedTailor, "id" | "bannedUntil">) => {
+    const newId = crypto.randomUUID();
+    const { error } = await supabase.from("profiles").insert({
+      id: newId,
+      role: "tailor",
+      full_name: t.fullName,
+      atelier_name: t.atelier,
+      username: t.username,
+      experience_start_date: t.experienceStartDate,
+      location_lat: t.location?.lat,
+      location_lng: t.location?.lng,
+      location_address: t.location?.address
+    });
+
+    if (error) {
+      toast.error("Failed to add tailor: " + error.message);
+      return;
+    }
+    setTailors((list) => [...list, { id: newId, ...t, bannedUntil: null }]);
     toast.success(`${t.atelier} provisioned.`);
   };
 
