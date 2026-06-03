@@ -11,7 +11,7 @@ import { TailorsTable } from "@/components/admin/TailorsTable";
 import { AddTailorDialog } from "@/components/admin/AddTailorDialog";
 import { EditTailorDialog } from "@/components/admin/EditTailorDialog";
 import { BanTailorDialog } from "@/components/admin/BanTailorDialog";
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { useEffect } from "react";
 
 export const Route = createFileRoute("/_layout/admin")({
@@ -78,7 +78,29 @@ function AdminPage() {
   }
 
   const addTailor = async (t: Omit<ManagedTailor, "id" | "bannedUntil">) => {
-    const newId = crypto.randomUUID();
+    let newId = crypto.randomUUID();
+
+    // 1. Create the Auth user securely without logging out the Admin
+    if (supabaseAdmin) {
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: t.email,
+        password: t.password,
+        email_confirm: true,
+      });
+
+      if (authError) {
+        toast.error("Failed to create Auth account: " + authError.message);
+        return;
+      }
+      if (authData.user) {
+        newId = authData.user.id;
+      }
+    } else {
+      toast.error("Service Role Key missing! Cannot create a login account for this tailor. Please update .env");
+      return;
+    }
+
+    // 2. Create the Profile record
     const { error } = await supabase.from("profiles").insert({
       id: newId,
       role: "tailor",
@@ -92,7 +114,7 @@ function AdminPage() {
     });
 
     if (error) {
-      toast.error("Failed to add tailor: " + error.message);
+      toast.error("Failed to add tailor profile: " + error.message);
       return;
     }
     setTailors((list) => [...list, { id: newId, ...t, bannedUntil: null }]);
