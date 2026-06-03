@@ -39,8 +39,9 @@ function LoginPage() {
     setLoading(true);
     try {
       await login(parsed.data.email, parsed.data.password);
-      navigate({ to: "/" });
+      await navigate({ to: "/" });
     } catch (err: any) {
+      console.error("Login error:", err);
       setLoginError(err?.message ?? "Invalid email or password.");
     } finally {
       setLoading(false);
