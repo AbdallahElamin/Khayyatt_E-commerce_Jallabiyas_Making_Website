@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:ai": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& 'api/python-engine/.venv_311/Scripts/python.exe' -m uvicorn tailorvision.api.server:app --host 0.0.0.0 --port 8000 --reload --app-dir api/python-engine\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
