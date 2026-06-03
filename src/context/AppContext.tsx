@@ -160,6 +160,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (profileError) {
         console.error("Failed to create profile:", profileError);
+        // Throw so the register page catches it and displays it
+        throw new Error("Profile creation failed: " + profileError.message);
       }
 
       await loadProfile(data.user.id, data.user.email ?? null);
