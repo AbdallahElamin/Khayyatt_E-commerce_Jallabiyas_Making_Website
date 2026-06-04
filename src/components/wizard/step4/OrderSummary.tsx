@@ -1,15 +1,17 @@
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { TAILOR_PROFILES } from "@/lib/mock-data";
+import { TAILOR_PROFILES, type TailorProfile } from "@/lib/mock-data";
 import {
   FABRICS, FABRIC_COLORS, SLEEVES, EMBROIDERY_PATTERNS, EMBROIDERY_PLACEMENTS,
   FASTENERS, BUTTON_COLORS, COLLARS, BACK_STITCH_PATTERNS, type SwatchOption,
 } from "@/lib/wizard-data";
 import { StarRating } from "@/components/portfolio/StarRating";
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, useWizard } from "../WizardContext";
+import { supabase } from "@/lib/supabase";
 
 function look(list: SwatchOption[], id?: string) {
   return list.find((x) => x.id === id);
@@ -17,7 +19,70 @@ function look(list: SwatchOption[], id?: string) {
 
 export function OrderSummary() {
   const { tailorId, design, measurements, resetWizard, addToCart } = useWizard();
-  const tailor = TAILOR_PROFILES.find((t) => t.id === tailorId);
+
+  // Try mock profiles first; if not found, load from Supabase
+  const mockTailor = TAILOR_PROFILES.find((t) => t.id === tailorId);
+  const [tailor, setTailor] = useState<TailorProfile | undefined>(mockTailor);
+
+  useEffect(() => {
+    if (mockTailor || !tailorId) return; // already found in mock data
+    // Load real profile from Supabase
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", tailorId)
+      .single()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then(({ data }) => {
+        if (!data) return;
+        const G = {
+          emerald: "linear-gradient(135deg, oklch(0.30 0.08 160), oklch(0.55 0.13 160))",
+          saffron: "linear-gradient(135deg, oklch(0.78 0.15 70), oklch(0.45 0.13 30))",
+        };
+        const fullName = (data as any).full_name || "Unknown Tailor";
+        const parts = fullName.trim().split(/\s+/);
+        const initials =
+          parts.length >= 2
+            ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+            : fullName.slice(0, 2).toUpperCase() || "?";
+        const profile: TailorProfile = {
+          id: (data as any).id,
+          atelier: (data as any).atelier_name || "Unknown Atelier",
+          tailorName: fullName,
+          firstName: parts[0] || "",
+          lastName: parts.slice(1).join(" ") || "",
+          initials,
+          city: (data as any).location_address
+            ? (data as any).location_address.split(",")[0].trim()
+            : "",
+          country: "",
+          specialty: "Custom Tailoring",
+          rating:
+            typeof (data as any).rating === "number" ? (data as any).rating : 5.0,
+          reviewCount:
+            typeof (data as any).review_count === "number"
+              ? (data as any).review_count
+              : 0,
+          years: 0,
+          experienceStartDate:
+            (data as any).experience_start_date ||
+            new Date().toISOString().split("T")[0],
+          username: (data as any).username || "",
+          password: "",
+          bio: "",
+          avatarGradient: G.emerald,
+          coverGradient: G.saffron,
+          lat: (data as any).location_lat || 0,
+          lng: (data as any).location_lng || 0,
+        };
+        setTailor(profile);
+      });
+  }, [tailorId, mockTailor]);
+
+  // Keep state in sync if user goes back and picks a different tailor
+  useEffect(() => {
+    setTailor(mockTailor);
+  }, [tailorId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Save the current design to the cart, then wipe the wizard so
    *  the user can configure a second garment from a clean state. */
@@ -31,26 +96,32 @@ export function OrderSummary() {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card className="overflow-hidden">
-        <div className="h-20" style={{ background: tailor?.coverGradient }} />
+        <div className="h-20" style={{ background: tailor?.coverGradient ?? "linear-gradient(135deg, oklch(0.78 0.15 70), oklch(0.45 0.13 30))" }} />
         <div className="-mt-10 flex items-end gap-4 px-6">
           <div
             className="grid h-20 w-20 place-items-center rounded-full border-4 border-card font-display text-2xl text-primary-foreground"
-            style={{ background: tailor?.avatarGradient }}
+            style={{ background: tailor?.avatarGradient ?? "linear-gradient(135deg, oklch(0.30 0.08 160), oklch(0.55 0.13 160))" }}
           >
-            {tailor?.initials}
+            {tailor?.initials ?? "?"}
           </div>
           <div className="pb-3">
-            <p className="font-display text-xl text-primary">{tailor?.atelier}</p>
+            <p className="font-display text-xl text-primary">
+              {tailor?.atelier ?? (tailorId ? "Loading…" : "No tailor selected")}
+            </p>
             <p className="text-sm text-muted-foreground">{tailor?.tailorName}</p>
           </div>
         </div>
         <div className="space-y-2 px-6 pb-6 pt-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-3.5 w-3.5" />
-            {tailor?.city}, {tailor?.country}
-          </div>
+          {tailor?.city && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              {tailor.city}{tailor.country ? `, ${tailor.country}` : ""}
+            </div>
+          )}
           {tailor && <StarRating value={tailor.rating} />}
-          <p className="pt-2 text-sm text-muted-foreground">{tailor?.specialty}</p>
+          {tailor?.specialty && (
+            <p className="pt-2 text-sm text-muted-foreground">{tailor.specialty}</p>
+          )}
         </div>
       </Card>
 

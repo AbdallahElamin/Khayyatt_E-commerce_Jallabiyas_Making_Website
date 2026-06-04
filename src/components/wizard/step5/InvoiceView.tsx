@@ -8,7 +8,7 @@ import { Banknote, CreditCard, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useOrders, type Order, type PaymentMethod } from "@/context/OrdersContext";
 import { TAILOR_PROFILES } from "@/lib/mock-data";
-import { FABRICS } from "@/lib/wizard-data";
+import { FABRICS, DELIVERY_FEE } from "@/lib/wizard-data";
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -17,6 +17,12 @@ export function InvoiceView({ order }: { order: Order }) {
   const [method, setMethod] = useState<PaymentMethod>("cod");
 
   const isSingle = order.items.length === 1;
+
+  // Delivery is a single flat fee per order — the stored pricing summed it N times,
+  // so we correct it here for display purposes.
+  const deliveryOnce = DELIVERY_FEE;
+  const excessDelivery = !isSingle ? deliveryOnce * (order.items.length - 1) : 0;
+  const correctedTotal = Math.max(0, order.pricing.total - excessDelivery);
 
   const confirm = () => {
     confirmPayment(order.id, method);
@@ -67,12 +73,13 @@ export function InvoiceView({ order }: { order: Order }) {
                   label={`Tailoring labor (${embCount} embroidery placement${embCount === 1 ? "" : "s"})`}
                   value={item.pricing.labor}
                 />
-                <LineRow label="Delivery routing"     value={item.pricing.delivery} />
+                {/* Delivery routing is a single per-order fee — only show it per-item for single-item orders */}
+                {isSingle && <LineRow label="Delivery routing" value={item.pricing.delivery} />}
                 <LineRow label="Tax (15%)"             value={item.pricing.tax} />
                 {!isSingle && (
                   <div className="flex items-center justify-between py-2 font-medium text-foreground">
-                    <span>Sub-total</span>
-                    <span>${item.pricing.total.toFixed(2)}</span>
+                    <span>Sub-total (excl. delivery)</span>
+                    <span>${(item.pricing.fabric + item.pricing.labor + item.pricing.tax).toFixed(2)}</span>
                   </div>
                 )}
               </div>
@@ -85,14 +92,15 @@ export function InvoiceView({ order }: { order: Order }) {
           <div className="mt-4 border-t border-border/60 pt-2 text-sm divide-y divide-border/40">
             <LineRow label={`Combined fabric (${order.items.length} garments)`} value={order.pricing.fabric} />
             <LineRow label="Combined labor"    value={order.pricing.labor} />
-            <LineRow label="Combined delivery" value={order.pricing.delivery} />
+            {/* Delivery routing is a single flat fee per order, not per garment */}
+            <LineRow label="Delivery routing (one-time)" value={deliveryOnce} />
             <LineRow label="Combined tax"      value={order.pricing.tax} />
           </div>
         )}
 
         <div className="mt-2 flex items-center justify-between py-4">
           <span className="font-display text-lg text-primary">Grand Total</span>
-          <span className="font-display text-2xl text-primary">${order.pricing.total.toFixed(2)}</span>
+          <span className="font-display text-2xl text-primary">${correctedTotal.toFixed(2)}</span>
         </div>
       </Card>
 
