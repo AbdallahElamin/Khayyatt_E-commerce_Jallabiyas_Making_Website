@@ -91,3 +91,110 @@ CREATE TABLE public.activity_logs (
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
+
+-- ── RLS Policies: orders ──────────────────────────────────────────────────────
+
+-- Customers can view their own orders
+CREATE POLICY "Customers can view their own orders."
+  ON public.orders FOR SELECT
+  USING ( auth.uid() = customer_id );
+
+-- Tailors can view orders that contain an item assigned to them
+CREATE POLICY "Tailors can view orders containing their items."
+  ON public.orders FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.order_items
+      WHERE order_items.order_id = orders.id
+        AND order_items.tailor_id = auth.uid()
+    )
+  );
+
+-- Authenticated customers can create orders for themselves
+CREATE POLICY "Customers can insert their own orders."
+  ON public.orders FOR INSERT
+  WITH CHECK ( auth.uid() = customer_id );
+
+-- ── RLS Policies: order_items ─────────────────────────────────────────────────
+
+-- Customers can view items belonging to their orders
+CREATE POLICY "Customers can view items in their orders."
+  ON public.order_items FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.orders
+      WHERE orders.id = order_items.order_id
+        AND orders.customer_id = auth.uid()
+    )
+  );
+
+-- Tailors can view items assigned to them
+CREATE POLICY "Tailors can view their own items."
+  ON public.order_items FOR SELECT
+  USING ( auth.uid() = tailor_id );
+
+-- Authenticated users can insert items (as part of order creation)
+CREATE POLICY "Authenticated users can insert order items."
+  ON public.order_items FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.orders
+      WHERE orders.id = order_items.order_id
+        AND orders.customer_id = auth.uid()
+    )
+  );
+
+-- Tailors can advance stage on their own items
+CREATE POLICY "Tailors can update stage on their own items."
+  ON public.order_items FOR UPDATE
+  USING ( auth.uid() = tailor_id )
+  WITH CHECK ( auth.uid() = tailor_id );
+
+-- ── RLS Policies: activity_logs ───────────────────────────────────────────────
+
+-- Customers can view logs for items in their orders
+CREATE POLICY "Customers can view activity logs for their orders."
+  ON public.activity_logs FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.order_items
+      JOIN public.orders ON orders.id = order_items.order_id
+      WHERE order_items.id = activity_logs.order_item_id
+        AND orders.customer_id = auth.uid()
+    )
+  );
+
+-- Tailors can view logs for their items
+CREATE POLICY "Tailors can view activity logs for their items."
+  ON public.activity_logs FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.order_items
+      WHERE order_items.id = activity_logs.order_item_id
+        AND order_items.tailor_id = auth.uid()
+    )
+  );
+
+-- Anyone involved in an order can insert logs (customer on creation, tailor on advance)
+CREATE POLICY "Insert activity log if involved in the order."
+  ON public.activity_logs FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.order_items
+      JOIN public.orders ON orders.id = order_items.order_id
+      WHERE order_items.id = activity_logs.order_item_id
+        AND (
+          orders.customer_id = auth.uid()
+          OR order_items.tailor_id = auth.uid()
+        )
+    )
+  );
+
+-- ── RLS Policy: orders UPDATE (confirm payment) ───────────────────────────────
+
+-- Customers can confirm payment (update status/payment_method) on their own orders
+CREATE POLICY "Customers can update their own order status."
+  ON public.orders FOR UPDATE
+  USING ( auth.uid() = customer_id )
+  WITH CHECK ( auth.uid() = customer_id );
+

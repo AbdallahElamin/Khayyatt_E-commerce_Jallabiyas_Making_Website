@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useOrders } from "@/context/OrdersContext";
 import { InvoiceView } from "@/components/wizard/step5/InvoiceView";
-import { TrackingView } from "@/components/wizard/step5/TrackingView";
+import { OrderTrackingView } from "@/components/wizard/step5/OrderTrackingView";
 
 export const Route = createFileRoute("/_layout/invoice/$orderId")({
   head: () => ({ meta: [{ title: "Invoice — Khayyat" }] }),
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_layout/invoice/$orderId")({
 
 function InvoicePage() {
   const { orderId } = Route.useParams();
-  const { getOrder, orders } = useOrders();
+  const { getOrder } = useOrders();
 
   const specificOrder = getOrder(orderId);
 
@@ -37,16 +37,8 @@ function InvoicePage() {
   if (specificOrder.status === "confirmed") {
     return (
       <PageShell>
-        <div className="space-y-12">
-          {specificOrder.items.map((item, index) => (
-            <div key={item.id}>
-              {specificOrder.items.length > 1 && (
-                <h3 className="mb-4 font-display text-2xl text-primary">Item {index + 1}</h3>
-              )}
-              <TrackingView orderId={specificOrder.id} item={item} paymentMethod={specificOrder.payment!} />
-            </div>
-          ))}
-        </div>
+        {/* Single unified tracking view for the whole order */}
+        <OrderTrackingView order={specificOrder} />
       </PageShell>
     );
   }
