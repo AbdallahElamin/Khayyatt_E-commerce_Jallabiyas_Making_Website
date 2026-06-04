@@ -89,8 +89,27 @@ CREATE TABLE public.activity_logs (
 
 -- Enable RLS
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
+-- ── Security Definer Functions (to prevent infinite recursion) ──────────────
+
+CREATE OR REPLACE FUNCTION public.is_tailor_for_order(order_id_param text)
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.order_items
+    WHERE order_id = order_id_param AND tailor_id = auth.uid()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.is_customer_for_order(order_id_param text)
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = order_id_param AND customer_id = auth.uid()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ── RLS Policies: orders ──────────────────────────────────────────────────────
 
@@ -102,13 +121,7 @@ CREATE POLICY "Customers can view their own orders."
 -- Tailors can view orders that contain an item assigned to them
 CREATE POLICY "Tailors can view orders containing their items."
   ON public.orders FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.order_items
-      WHERE order_items.order_id = orders.id
-        AND order_items.tailor_id = auth.uid()
-    )
-  );
+  USING ( public.is_tailor_for_order(id) );
 
 -- Authenticated customers can create orders for themselves
 CREATE POLICY "Customers can insert their own orders."
@@ -120,13 +133,7 @@ CREATE POLICY "Customers can insert their own orders."
 -- Customers can view items belonging to their orders
 CREATE POLICY "Customers can view items in their orders."
   ON public.order_items FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.orders
-      WHERE orders.id = order_items.order_id
-        AND orders.customer_id = auth.uid()
-    )
-  );
+  USING ( public.is_customer_for_order(order_id) );
 
 -- Tailors can view items assigned to them
 CREATE POLICY "Tailors can view their own items."
@@ -136,13 +143,7 @@ CREATE POLICY "Tailors can view their own items."
 -- Authenticated users can insert items (as part of order creation)
 CREATE POLICY "Authenticated users can insert order items."
   ON public.order_items FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.orders
-      WHERE orders.id = order_items.order_id
-        AND orders.customer_id = auth.uid()
-    )
-  );
+  WITH CHECK ( public.is_customer_for_order(order_id) );
 
 -- Tailors can advance stage on their own items
 CREATE POLICY "Tailors can update stage on their own items."
@@ -158,9 +159,8 @@ CREATE POLICY "Customers can view activity logs for their orders."
   USING (
     EXISTS (
       SELECT 1 FROM public.order_items
-      JOIN public.orders ON orders.id = order_items.order_id
-      WHERE order_items.id = activity_logs.order_item_id
-        AND orders.customer_id = auth.uid()
+      WHERE id = activity_logs.order_item_id
+        AND public.is_customer_for_order(order_id)
     )
   );
 
@@ -170,8 +170,8 @@ CREATE POLICY "Tailors can view activity logs for their items."
   USING (
     EXISTS (
       SELECT 1 FROM public.order_items
-      WHERE order_items.id = activity_logs.order_item_id
-        AND order_items.tailor_id = auth.uid()
+      WHERE id = activity_logs.order_item_id
+        AND tailor_id = auth.uid()
     )
   );
 
@@ -181,11 +181,10 @@ CREATE POLICY "Insert activity log if involved in the order."
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.order_items
-      JOIN public.orders ON orders.id = order_items.order_id
-      WHERE order_items.id = activity_logs.order_item_id
+      WHERE id = activity_logs.order_item_id
         AND (
-          orders.customer_id = auth.uid()
-          OR order_items.tailor_id = auth.uid()
+          public.is_customer_for_order(order_id)
+          OR tailor_id = auth.uid()
         )
     )
   );

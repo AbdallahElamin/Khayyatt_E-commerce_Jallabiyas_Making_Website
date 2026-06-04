@@ -15,11 +15,20 @@ export function WizardFooter() {
   if (step === 4) {
     const confirm = async () => {
       if (!tailorId) return;
-      const finalCart = [...cart, { tailorId, design, measurements }];
-      const id = await createOrder({ customerId: user.id, cart: finalCart });
-      clearCart();
-      toast.success("Order created — proceed to payment.");
-      navigate({ to: "/invoice/$orderId", params: { orderId: id } });
+      if (!user.id) {
+        toast.error("You must be logged in to place an order.");
+        return;
+      }
+      
+      try {
+        const finalCart = [...cart, { tailorId, design, measurements }];
+        const id = await createOrder({ customerId: user.id, cart: finalCart });
+        clearCart();
+        toast.success("Order created — proceed to payment.");
+        navigate({ to: "/invoice/$orderId", params: { orderId: id } });
+      } catch (err: any) {
+        toast.error(err.message || "Failed to create order.");
+      }
     };
     return (
       <div className="mx-auto mt-10 flex max-w-5xl flex-col-reverse items-stretch justify-between gap-3 px-4 pb-16 sm:flex-row sm:items-center sm:px-6 lg:px-8">
