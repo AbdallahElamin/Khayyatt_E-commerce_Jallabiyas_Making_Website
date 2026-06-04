@@ -63,8 +63,8 @@ function TailorProfilePage() {
   const { tailor } = Route.useLoaderData();
   const { role, user } = useApp();
 
-  // Owner = the tailor user mapped to this tailorId, OR an admin (full edit rights).
-  const canEdit = role === "admin" || (role === "tailor" && user.tailorId === tailor.id);
+  // Owner = the tailor whose profile id matches the page id, OR an admin.
+  const canEdit = role === "admin" || (role === "tailor" && user.id === tailor.id);
 
   // Local editable state (mock — would persist once Cloud is wired).
   const [displayName, setDisplayName] = useState(tailor.tailorName);

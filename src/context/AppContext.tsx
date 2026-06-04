@@ -14,6 +14,10 @@ export interface UserProfile {
   location_address: string | null;
   atelier_name: string | null;
   experience_start_date: string | null;
+  /** Tailor rating (0–5). Stored directly on the profile; 0 until reviews are recorded. */
+  rating: number;
+  /** Total number of customer reviews. */
+  review_count: number;
   // Derived convenience fields
   initials: string;
   name: string;
@@ -50,6 +54,8 @@ const GUEST_PROFILE: UserProfile = {
   location_address: null,
   atelier_name: null,
   experience_start_date: null,
+  rating: 0,
+  review_count: 0,
   initials: "?",
   name: "Guest",
 };
@@ -72,6 +78,8 @@ function buildProfile(raw: any, email: string | null): UserProfile {
     location_address: raw.location_address,
     atelier_name: raw.atelier_name,
     experience_start_date: raw.experience_start_date,
+    rating: typeof raw.rating === "number" ? raw.rating : Number(raw.rating ?? 0),
+    review_count: typeof raw.review_count === "number" ? raw.review_count : Number(raw.review_count ?? 0),
     initials,
     name: fullName || email || "User",
   };

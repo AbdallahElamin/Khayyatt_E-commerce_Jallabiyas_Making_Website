@@ -93,7 +93,7 @@ function AdminPage() {
         return;
       }
       if (authData.user) {
-        newId = authData.user.id;
+        newId = authData.user.id as typeof newId;
       }
     } else {
       toast.error("Service Role Key missing! Cannot create a login account for this tailor. Please update .env");

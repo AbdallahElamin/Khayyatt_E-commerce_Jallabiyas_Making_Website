@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import {
-  ArrowUpRight,
   ChevronLeft,
   ChevronRight,
   MapPin,
@@ -20,7 +18,6 @@ import {
   CarouselItem,
   type CarouselApi,
 } from "@/components/ui/carousel";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StarRating } from "./StarRating";
 import { getPostsByTailor, type TailorProfile, type TailorPost } from "@/lib/mock-data";
@@ -113,8 +110,7 @@ export function AtelierLightbox({ tailor, onClose, allPosts }: Props) {
             </DialogTitle>
             <DialogDescription className="sr-only">
               {total} recent commissions from {tailor.atelier}. Use arrow keys or
-              the on-screen buttons to browse. Click "View Full Profile" to open
-              the tailor's portfolio page.
+              the on-screen buttons to browse.
             </DialogDescription>
 
             {/* ── Tailor header strip ─────────────────────────────────── */}
@@ -231,23 +227,13 @@ export function AtelierLightbox({ tailor, onClose, allPosts }: Props) {
               </div>
             )}
 
-            {/* ── Footer: counter + CTA ───────────────────────────────── */}
+            {/* ── Footer: counter ─────────────────────────────────────── */}
             <div className="flex items-center justify-between border-t border-border/60 px-6 py-4 bg-muted/30">
               <p className="text-xs text-muted-foreground">
                 {total > 0
                   ? `${current + 1} / ${total} commissions`
                   : "No commissions yet"}
               </p>
-              <Button
-                asChild
-                className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
-                size="sm"
-                onClick={onClose}
-              >
-                <Link to="/portfolio/$tailorId" params={{ tailorId: tailor.id }}>
-                  View Full Profile <ArrowUpRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
             </div>
           </>
         )}

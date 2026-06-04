@@ -6,8 +6,8 @@
  *   1. Photo upload  (single or multiple images, up to 5)
  *   2. Style         (one of the 8 colour gradients from POST_GRADIENTS)
  *
- * Everything else — Atelier name, tailor name, location, experience years and
- * rating — is inferred automatically from AppContext + getTailorById().
+ * Atelier details are derived directly from the logged-in UserProfile (real
+ * Supabase data) — no longer dependent on the legacy getTailorById() mock lookup.
  */
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -33,11 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/context/AppContext";
-import {
-  POST_GRADIENTS,
-  getTailorById,
-  type TailorPost,
-} from "@/lib/mock-data";
+import { POST_GRADIENTS, type TailorPost } from "@/lib/mock-data";
 import { calculateExperienceYears } from "@/lib/utils";
 
 interface Props {
@@ -53,7 +49,10 @@ const MAX_PHOTOS = 5;
 
 export function TailorArchivePostDialog({ open, onClose, onPublish }: Props) {
   const { user } = useApp();
-  const tailor = user.tailorId ? getTailorById(user.tailorId) : undefined;
+
+  // Derive the tailor's identity directly from the real UserProfile.
+  // `user.atelier_name` and `user.experience_start_date` come from Supabase.
+  const hasProfile = !!(user.id && user.role === "tailor" && user.atelier_name);
 
   // ── form state ──────────────────────────────────────────────────────────
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
@@ -99,26 +98,35 @@ export function TailorArchivePostDialog({ open, onClose, onPublish }: Props) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!tailor || !user.tailorId) return;
+    if (!hasProfile) return;
 
-    const expYears = calculateExperienceYears(tailor.experienceStartDate);
+    const expYears = user.experience_start_date
+      ? calculateExperienceYears(user.experience_start_date)
+      : 0;
     const firstPhoto = photos[0];
 
-    // Build the customerName from the tailor's own identity —
-    // they are posting their own commission.
-    const customerName = `${tailor.firstName} ${tailor.lastName.charAt(0)}.`;
+    // Build author line from real profile
+    const nameParts = (user.full_name ?? user.name ?? "").trim().split(/\s+/);
+    const authorLabel =
+      nameParts.length >= 2
+        ? `${nameParts[0]} ${nameParts[nameParts.length - 1].charAt(0)}.`
+        : (user.full_name ?? user.name ?? "Tailor");
+
+    const ratingLine =
+      user.rating > 0
+        ? `, rated ${user.rating.toFixed(1)} by ${user.review_count} customers`
+        : "";
 
     const post: TailorPost = {
       id: crypto.randomUUID(),
-      tailorId: user.tailorId,
+      tailorId: user.id,
       title: `${selectedStyle.label} Commission`,
       description:
-        `A new commission from ${tailor.atelier}, ${tailor.city}. ` +
-        `${expYears} years of craft, rated ${tailor.rating.toFixed(1)} by ` +
-        `${tailor.reviewCount} customers.`,
+        `A new commission from ${user.atelier_name}, ${user.location_address ?? ""}. ` +
+        `${expYears} years of craft${ratingLine}.`,
       imageGradient: selectedStyle.gradient,
-      imageUrl: firstPhoto?.url,          // first photo only; gradient is fallback
-      customerName,
+      imageUrl: firstPhoto?.url, // first photo only; gradient is fallback
+      customerName: authorLabel,
       createdAt: new Date().toISOString(),
     };
 
@@ -126,10 +134,13 @@ export function TailorArchivePostDialog({ open, onClose, onPublish }: Props) {
     onClose();
   };
 
-  // ── computed data for the "auto-filled" info card ────────────────────────
-  const expYears = tailor
-    ? calculateExperienceYears(tailor.experienceStartDate)
-    : 0;
+  // ── computed display values ──────────────────────────────────────────────
+  const expYears = user.experience_start_date
+    ? calculateExperienceYears(user.experience_start_date)
+    : null;
+
+  const ratingDisplay =
+    user.rating > 0 ? `${user.rating.toFixed(1)} / 5` : "—";
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -139,7 +150,7 @@ export function TailorArchivePostDialog({ open, onClose, onPublish }: Props) {
             Add atelier post
           </DialogTitle>
           <DialogDescription>
-            Upload your commission photo and choose a colour style — your atelier
+            Upload your commission photo and choose a style — your atelier
             details are filled in automatically.
           </DialogDescription>
         </DialogHeader>
@@ -239,7 +250,7 @@ export function TailorArchivePostDialog({ open, onClose, onPublish }: Props) {
             )}
           </div>
 
-          {/* ── Style / colour picker ────────────────────────────────── */}
+          {/* ── Style picker — label always visible below each swatch ── */}
           <div className="space-y-2">
             <Label>Style</Label>
             <div className="grid grid-cols-4 gap-2">
@@ -251,24 +262,35 @@ export function TailorArchivePostDialog({ open, onClose, onPublish }: Props) {
                     type="button"
                     onClick={() => setStyleId(g.id)}
                     className={cn(
-                      "relative h-14 rounded-md border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "group flex flex-col items-center gap-1.5 rounded-lg border-2 p-1 pb-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       active
-                        ? "border-accent shadow-[var(--shadow-luxe)] scale-[1.02]"
-                        : "border-transparent hover:border-primary/30",
+                        ? "border-accent shadow-[var(--shadow-luxe)] scale-[1.03] bg-accent/5"
+                        : "border-transparent hover:border-primary/30 hover:bg-muted/30",
                     )}
-                    style={{ background: g.gradient }}
                     aria-label={g.label}
                     aria-pressed={active}
                     title={g.label}
                   >
-                    {active && (
-                      <span className="absolute inset-0 flex items-center justify-center">
-                        <span className="flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-foreground shadow">
-                          <Check className="h-2.5 w-2.5" />
-                          {g.label}
+                    {/* Colour swatch */}
+                    <div
+                      className="relative h-10 w-full rounded-md"
+                      style={{ background: g.gradient }}
+                    >
+                      {active && (
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <Check className="h-3.5 w-3.5 text-white drop-shadow" />
                         </span>
-                      </span>
-                    )}
+                      )}
+                    </div>
+                    {/* Always-visible label */}
+                    <span
+                      className={cn(
+                        "text-[11px] font-medium leading-none",
+                        active ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {g.label}
+                    </span>
                   </button>
                 );
               })}
@@ -276,35 +298,36 @@ export function TailorArchivePostDialog({ open, onClose, onPublish }: Props) {
           </div>
 
           {/* ── Auto-filled profile summary ──────────────────────────── */}
-          {tailor ? (
+          {hasProfile ? (
             <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
               <div className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <Info className="h-3 w-3" />
                 Auto-filled from your profile
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                <InfoRow label="Atelier" value={tailor.atelier} />
+                <InfoRow label="Atelier" value={user.atelier_name ?? "—"} />
                 <InfoRow
                   label="Location"
-                  value={`${tailor.city}, ${tailor.country}`}
+                  value={user.location_address ?? "—"}
                   icon={<MapPin className="h-3 w-3" />}
                 />
                 <InfoRow
                   label="Experience"
-                  value={`${expYears} yrs`}
+                  value={expYears !== null ? `${expYears} yrs` : "—"}
                   icon={<Scissors className="h-3 w-3" />}
                 />
                 <InfoRow
                   label="Rating"
-                  value={`${tailor.rating.toFixed(1)} / 5`}
+                  value={ratingDisplay}
                   icon={<Star className="h-3 w-3 fill-accent text-accent" />}
                 />
               </div>
             </div>
           ) : (
-            /* Shouldn't normally happen — shown only if tailorId is missing */
+            /* Shown only if the tailor account has no atelier_name set */
             <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-              Could not load your atelier profile. Please reload and try again.
+              Your tailor profile is incomplete. Please set your atelier name in
+              your profile settings before publishing a post.
             </p>
           )}
         </form>
@@ -316,7 +339,7 @@ export function TailorArchivePostDialog({ open, onClose, onPublish }: Props) {
           <Button
             type="submit"
             form="tailor-archive-post-form"
-            disabled={!tailor}
+            disabled={!hasProfile}
             className="bg-primary text-primary-foreground"
           >
             Publish post
