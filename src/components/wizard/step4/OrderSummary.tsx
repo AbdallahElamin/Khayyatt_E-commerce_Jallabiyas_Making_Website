@@ -10,23 +10,21 @@ import {
 } from "@/lib/wizard-data";
 import { StarRating } from "@/components/portfolio/StarRating";
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, useWizard } from "../WizardContext";
-import { useOrders } from "@/context/OrdersContext";
 
 function look(list: SwatchOption[], id?: string) {
   return list.find((x) => x.id === id);
 }
 
 export function OrderSummary() {
-  const { tailorId, design, measurements, resetWizard } = useWizard();
-  const { createOrder } = useOrders();
+  const { tailorId, design, measurements, resetWizard, addToCart } = useWizard();
   const tailor = TAILOR_PROFILES.find((t) => t.id === tailorId);
 
-  /** Save the current design as a pending order, then wipe the wizard so
+  /** Save the current design to the cart, then wipe the wizard so
    *  the user can configure a second garment from a clean state. */
-  const handleAddAnother = async () => {
+  const handleAddAnother = () => {
     if (!tailorId) return;
-    await createOrder({ tailorId, design, measurements });
-    toast.success("Order saved — now configure your next garment.");
+    addToCart();
+    toast.success("Jallabiyah added to order — now configure your next one.");
     resetWizard(); // clears design + measurements, returns to step 2
   };
 
@@ -122,9 +120,9 @@ export function OrderSummary() {
       {/* ── Add another garment ── */}
       <div className="lg:col-span-2 flex items-center justify-between gap-4 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-4">
         <div>
-          <p className="text-sm font-medium text-foreground">Want to order another garment?</p>
+          <p className="text-sm font-medium text-foreground">Want to order another Jallabiyah?</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Saves this design as a pending order and opens a fresh customiser.
+            Adds this design to your current order and opens a fresh customiser for the next one.
           </p>
         </div>
         <Button
@@ -134,7 +132,7 @@ export function OrderSummary() {
           className="shrink-0 gap-2"
         >
           <Plus className="h-4 w-4" />
-          Add Another Order
+          Add a new Jallabiyah
         </Button>
       </div>
     </div>

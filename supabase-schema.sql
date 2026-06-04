@@ -53,3 +53,41 @@ CREATE POLICY "Users can insert their own profile."
 -- ALTER TABLE public.profiles
 --   ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2) DEFAULT 0 CHECK (rating >= 0 AND rating <= 5),
 --   ADD COLUMN IF NOT EXISTS review_count INTEGER DEFAULT 0 CHECK (review_count >= 0);
+
+-- ── Order System Tables ───────────
+
+CREATE TYPE public.order_status AS ENUM ('pending_payment', 'confirmed');
+CREATE TYPE public.payment_method AS ENUM ('cod', 'card');
+
+CREATE TABLE public.orders (
+  id TEXT PRIMARY KEY, -- e.g. o-xyz123
+  customer_id UUID REFERENCES public.profiles(id),
+  status public.order_status NOT NULL DEFAULT 'pending_payment',
+  payment_method public.payment_method,
+  total_price NUMERIC(10,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE public.order_items (
+  id TEXT PRIMARY KEY, -- e.g. item-xyz123
+  order_id TEXT REFERENCES public.orders(id) ON DELETE CASCADE,
+  tailor_id UUID REFERENCES public.profiles(id),
+  design JSONB NOT NULL,
+  measurements JSONB NOT NULL,
+  pricing JSONB NOT NULL,
+  stage INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE public.activity_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_item_id TEXT REFERENCES public.order_items(id) ON DELETE CASCADE,
+  stage INTEGER NOT NULL,
+  note TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;

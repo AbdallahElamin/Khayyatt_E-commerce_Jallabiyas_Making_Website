@@ -5,13 +5,15 @@ import {
 } from "@/components/ui/table";
 import { Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useOrders, STAGE_LABELS, type Order } from "@/context/OrdersContext";
+import { useOrders, STAGE_LABELS, type OrderItem, type PaymentMethod } from "@/context/OrdersContext";
+import { useApp } from "@/context/AppContext";
 import { TAILOR_PROFILES } from "@/lib/mock-data";
 
-export function TrackingView({ order }: { order: Order }) {
+export function TrackingView({ orderId, item, paymentMethod }: { orderId: string; item: OrderItem; paymentMethod: PaymentMethod }) {
   const { advanceStage } = useOrders();
-  const tailor = TAILOR_PROFILES.find((t) => t.id === order.tailorId);
-  const pct = (order.stage / (STAGE_LABELS.length - 1)) * 100;
+  const { role } = useApp();
+  const tailor = TAILOR_PROFILES.find((t) => t.id === item.tailorId);
+  const pct = (item.stage / (STAGE_LABELS.length - 1)) * 100;
 
   return (
     <div className="space-y-6">
@@ -21,16 +23,16 @@ export function TrackingView({ order }: { order: Order }) {
             <p className="text-xs uppercase tracking-[0.2em] text-accent-foreground">
               Order tracking
             </p>
-            <h2 className="font-display text-2xl text-primary">Order {order.id}</h2>
+            <h2 className="font-display text-2xl text-primary">Item {item.id}</h2>
             <p className="text-sm text-muted-foreground">
-              {tailor?.atelier} · {new Date(order.createdAt).toLocaleString()}
+              {tailor?.atelier}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Total paid</p>
-            <p className="font-display text-xl text-primary">${order.pricing.total.toFixed(2)}</p>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Item total</p>
+            <p className="font-display text-xl text-primary">${item.pricing.total.toFixed(2)}</p>
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-              {order.payment === "card" ? "Credit Card" : "Cash on Delivery"}
+              {paymentMethod === "card" ? "Credit Card" : "Cash on Delivery"}
             </p>
           </div>
         </div>
@@ -43,8 +45,8 @@ export function TrackingView({ order }: { order: Order }) {
           />
           <ol className="relative grid" style={{ gridTemplateColumns: `repeat(${STAGE_LABELS.length}, 1fr)` }}>
             {STAGE_LABELS.map((label, i) => {
-              const done = i < order.stage;
-              const active = i === order.stage;
+              const done = i < item.stage;
+              const active = i === item.stage;
               return (
                 <li key={label} className="flex flex-col items-center text-center">
                   <div
@@ -71,9 +73,9 @@ export function TrackingView({ order }: { order: Order }) {
           </ol>
         </div>
 
-        {order.stage < STAGE_LABELS.length - 1 && (
+        {item.stage < STAGE_LABELS.length - 1 && role === "tailor" && (
           <div className="mt-8 flex justify-end">
-            <Button variant="ghost" size="sm" onClick={async () => await advanceStage(order.id)} className="gap-1 text-xs">
+            <Button variant="ghost" size="sm" onClick={async () => await advanceStage(orderId, item.id)} className="gap-1 text-xs">
               Advance stage (preview) <ChevronRight className="h-3 w-3" />
             </Button>
           </div>
@@ -93,11 +95,27 @@ export function TrackingView({ order }: { order: Order }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow>
-                <TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">
-                  No tracking events yet.
-                </TableCell>
-              </TableRow>
+              {item.activityLog.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">
+                    No tracking events yet.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                item.activityLog.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(log.timestamp).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="font-medium text-foreground">
+                      {STAGE_LABELS[log.stage]}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {log.note}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>

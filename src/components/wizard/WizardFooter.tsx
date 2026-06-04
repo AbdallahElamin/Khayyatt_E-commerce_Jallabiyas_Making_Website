@@ -3,17 +3,21 @@ import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useWizard } from "./WizardContext";
 import { useOrders } from "@/context/OrdersContext";
+import { useApp } from "@/context/AppContext";
 import { toast } from "sonner";
 
 export function WizardFooter() {
-  const { step, back, next, canAdvance, tailorId, design, measurements } = useWizard();
+  const { step, back, next, canAdvance, tailorId, design, measurements, cart, clearCart } = useWizard();
   const { createOrder } = useOrders();
+  const { user } = useApp();
   const navigate = useNavigate();
 
   if (step === 4) {
     const confirm = async () => {
       if (!tailorId) return;
-      const id = await createOrder({ tailorId, design, measurements });
+      const finalCart = [...cart, { tailorId, design, measurements }];
+      const id = await createOrder({ customerId: user.id, cart: finalCart });
+      clearCart();
       toast.success("Order created — proceed to payment.");
       navigate({ to: "/invoice/$orderId", params: { orderId: id } });
     };

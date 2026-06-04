@@ -15,25 +15,11 @@ function InvoicePage() {
   const { orderId } = Route.useParams();
   const { getOrder, orders } = useOrders();
 
-  // If the URL points to a *confirmed* order (e.g. navigating back from the
-  // orders list) show that order's tracking view — no aggregation needed.
   const specificOrder = getOrder(orderId);
-  if (specificOrder?.status === "confirmed") {
+
+  if (!specificOrder) {
     return (
       <PageShell>
-        <TrackingView order={specificOrder} />
-      </PageShell>
-    );
-  }
-
-  // Collect every pending-payment order so the invoice shows a combined total.
-  // This is the fix: previously only `specificOrder` was passed, which was
-  // undefined if the state update hadn't propagated or multiple orders existed.
-  const pendingOrders = orders.filter((o) => o.status === "pending_payment");
-
-  return (
-    <PageShell>
-      {pendingOrders.length === 0 ? (
         <Card className="p-12 text-center">
           <h2 className="font-display text-2xl text-primary">Order not found</h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -44,9 +30,30 @@ function InvoicePage() {
             <Link to="/wizard">Start a new order</Link>
           </Button>
         </Card>
-      ) : (
-        <InvoiceView orders={pendingOrders} />
-      )}
+      </PageShell>
+    );
+  }
+
+  if (specificOrder.status === "confirmed") {
+    return (
+      <PageShell>
+        <div className="space-y-12">
+          {specificOrder.items.map((item, index) => (
+            <div key={item.id}>
+              {specificOrder.items.length > 1 && (
+                <h3 className="mb-4 font-display text-2xl text-primary">Item {index + 1}</h3>
+              )}
+              <TrackingView orderId={specificOrder.id} item={item} paymentMethod={specificOrder.payment!} />
+            </div>
+          ))}
+        </div>
+      </PageShell>
+    );
+  }
+
+  return (
+    <PageShell>
+      <InvoiceView order={specificOrder} />
     </PageShell>
   );
 }

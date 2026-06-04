@@ -12,25 +12,18 @@ import { FABRICS } from "@/lib/wizard-data";
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function InvoiceView({ orders }: { orders: Order[] }) {
-  const { confirmAllPending } = useOrders();
+export function InvoiceView({ order }: { order: Order }) {
+  const { confirmPayment } = useOrders();
   const [method, setMethod] = useState<PaymentMethod>("cod");
 
-  // Aggregate totals across every pending order.
-  const grandTotal   = orders.reduce((s, o) => s + o.pricing.total,    0);
-  const grandFabric  = orders.reduce((s, o) => s + o.pricing.fabric,   0);
-  const grandLabor   = orders.reduce((s, o) => s + o.pricing.labor,    0);
-  const grandDelivery = orders.reduce((s, o) => s + o.pricing.delivery, 0);
-  const grandTax     = orders.reduce((s, o) => s + o.pricing.tax,      0);
-
-  const isSingle = orders.length === 1;
+  const isSingle = order.items.length === 1;
 
   const confirm = () => {
-    confirmAllPending(method);
+    confirmPayment(order.id, method);
     toast.success(
       isSingle
         ? "Order confirmed — tracking is live."
-        : `${orders.length} orders confirmed — tracking is live.`,
+        : `Order with ${order.items.length} items confirmed — tracking is live.`,
     );
   };
 
@@ -42,44 +35,44 @@ export function InvoiceView({ orders }: { orders: Order[] }) {
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-accent-foreground">Invoice</p>
             <h2 className="font-display text-2xl text-primary">
-              {isSingle ? `Order ${orders[0].id}` : `${orders.length} Pending Orders`}
+              Order {order.id}
             </h2>
           </div>
           {isSingle && (
             <p className="text-xs text-muted-foreground">
-              {TAILOR_PROFILES.find((t) => t.id === orders[0].tailorId)?.atelier}
+              {TAILOR_PROFILES.find((t) => t.id === order.items[0].tailorId)?.atelier}
             </p>
           )}
         </div>
 
-        {/* Per-order line items */}
-        {orders.map((order, idx) => {
-          const tailor = TAILOR_PROFILES.find((t) => t.id === order.tailorId);
-          const fabric = FABRICS.find((f) => f.id === order.design.fabric);
-          const embCount = order.design.embroideryPlacements.length;
+        {/* Per-item line items */}
+        {order.items.map((item, idx) => {
+          const tailor = TAILOR_PROFILES.find((t) => t.id === item.tailorId);
+          const fabric = FABRICS.find((f) => f.id === item.design.fabric);
+          const embCount = item.design.embroideryPlacements.length;
 
           return (
-            <div key={order.id} className="mt-5">
+            <div key={item.id} className="mt-5">
               {!isSingle && (
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-accent-foreground">
-                  Order {idx + 1} — {tailor?.atelier ?? "Tailor"} · {fabric?.label ?? "Base fabric"}
+                  Item {idx + 1} — {tailor?.atelier ?? "Tailor"} · {fabric?.label ?? "Base fabric"}
                 </p>
               )}
               <div className="divide-y divide-border/60 text-sm">
                 <LineRow
                   label={`Fabric — ${fabric?.label ?? "Base"}`}
-                  value={order.pricing.fabric}
+                  value={item.pricing.fabric}
                 />
                 <LineRow
                   label={`Tailoring labor (${embCount} embroidery placement${embCount === 1 ? "" : "s"})`}
-                  value={order.pricing.labor}
+                  value={item.pricing.labor}
                 />
-                <LineRow label="Delivery routing"     value={order.pricing.delivery} />
-                <LineRow label="Tax (15%)"             value={order.pricing.tax} />
+                <LineRow label="Delivery routing"     value={item.pricing.delivery} />
+                <LineRow label="Tax (15%)"             value={item.pricing.tax} />
                 {!isSingle && (
                   <div className="flex items-center justify-between py-2 font-medium text-foreground">
                     <span>Sub-total</span>
-                    <span>${order.pricing.total.toFixed(2)}</span>
+                    <span>${item.pricing.total.toFixed(2)}</span>
                   </div>
                 )}
               </div>
@@ -90,16 +83,16 @@ export function InvoiceView({ orders }: { orders: Order[] }) {
         {/* Grand total — only meaningful for multi-order */}
         {!isSingle && (
           <div className="mt-4 border-t border-border/60 pt-2 text-sm divide-y divide-border/40">
-            <LineRow label={`Combined fabric (${orders.length} garments)`} value={grandFabric} />
-            <LineRow label="Combined labor"    value={grandLabor} />
-            <LineRow label="Combined delivery" value={grandDelivery} />
-            <LineRow label="Combined tax"      value={grandTax} />
+            <LineRow label={`Combined fabric (${order.items.length} garments)`} value={order.pricing.fabric} />
+            <LineRow label="Combined labor"    value={order.pricing.labor} />
+            <LineRow label="Combined delivery" value={order.pricing.delivery} />
+            <LineRow label="Combined tax"      value={order.pricing.tax} />
           </div>
         )}
 
         <div className="mt-2 flex items-center justify-between py-4">
           <span className="font-display text-lg text-primary">Grand Total</span>
-          <span className="font-display text-2xl text-primary">${grandTotal.toFixed(2)}</span>
+          <span className="font-display text-2xl text-primary">${order.pricing.total.toFixed(2)}</span>
         </div>
       </Card>
 
@@ -152,7 +145,7 @@ export function InvoiceView({ orders }: { orders: Order[] }) {
         )}
 
         <Button id="confirm-orders-btn" onClick={confirm} className="mt-6 w-full gap-2">
-          Confirm {isSingle ? "Order" : `${orders.length} Orders`}
+          Confirm {isSingle ? "Order" : `Order (${order.items.length} items)`}
         </Button>
       </Card>
     </div>

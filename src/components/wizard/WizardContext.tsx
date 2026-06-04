@@ -13,6 +13,12 @@ export type DesignConfig = {
   backStitch?: string;
 };
 
+export type OrderItemDraft = {
+  tailorId: string;
+  design: DesignConfig;
+  measurements: Record<MeasurementKey, number | "">;
+};
+
 export const EMPTY_DESIGN: DesignConfig = {
   embroideryPlacements: [],
   buttonsVisible: true,
@@ -64,6 +70,7 @@ export type StepNum = 1 | 2 | 3 | 4;
 type Ctx = {
   step: StepNum;
   tailorId?: string;
+  cart: OrderItemDraft[];
   radiusKm: number;
   design: DesignConfig;
   preset?: string;
@@ -81,6 +88,8 @@ type Ctx = {
   resetWizard: () => void;
   /** Legacy alias for resetWizard — kept for backward compatibility. */
   resetForNewOrder: () => void;
+  addToCart: () => void;
+  clearCart: () => void;
   canAdvance: boolean;
 };
 
@@ -93,6 +102,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [design, setDesign] = useState<DesignConfig>(EMPTY_DESIGN);
   const [preset, setPreset] = useState<string | undefined>();
   const [measurements, setMeasurements] = useState<Measurements>(EMPTY_MEASUREMENTS);
+  const [cart, setCart] = useState<OrderItemDraft[]>([]);
 
   const canAdvance = useMemo(() => {
     if (step === 1) return !!tailorId;
@@ -103,7 +113,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   }, [step, tailorId, preset, design, measurements]);
 
   const value: Ctx = {
-    step, tailorId, radiusKm, design, preset, measurements,
+    step, tailorId, cart, radiusKm, design, preset, measurements,
     setStep,
     next: () => setStep((s) => (Math.min(4, s + 1) as StepNum)),
     back: () => setStep((s) => (Math.max(1, s - 1) as StepNum)),
@@ -125,6 +135,10 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setPreset(undefined);
       setStep(2);
     },
+    addToCart: () => {
+      if (tailorId) setCart((c) => [...c, { tailorId, design, measurements }]);
+    },
+    clearCart: () => setCart([]),
     canAdvance,
   };
 
